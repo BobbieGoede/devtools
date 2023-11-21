@@ -1,4 +1,5 @@
 import type { Component, NuxtApp, NuxtLayout, NuxtOptions, NuxtPage } from 'nuxt/schema'
+import type { NuxtConfigLayer, NuxtConfigSchema } from '@nuxt/schema'
 import type { StorageMounts } from 'nitropack'
 import type { StorageValue } from 'unstorage'
 import type { ModuleOptions, NuxtDevToolsOptions } from './options'
@@ -12,6 +13,10 @@ import type { InstallModuleReturn } from './server-ctx'
 export interface ServerFunctions {
   // Static RPCs (can be provide on production build in the future)
   getServerConfig(): NuxtOptions
+  getNuxtLayers(): NuxtConfigLayer
+  getCollectedConfigs(): NuxtConfigLayer[]
+  getDefaultConfig(): typeof NuxtConfigSchema
+  getIntermediates(): NuxtConfigLayer[]
   getServerRuntimeConfig(): Record<string, any>
   getModuleOptions(): ModuleOptions
   getComponents(): Component[]

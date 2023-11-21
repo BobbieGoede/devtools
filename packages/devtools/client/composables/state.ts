@@ -42,6 +42,22 @@ export function useServerApp() {
   return useAsyncState('getServerApp', () => rpc.getServerApp())
 }
 
+export function useNuxtLayers() {
+  return useAsyncState('getNuxtLayers', () => rpc.getNuxtLayers())
+}
+
+export function useCollectedConfigs() {
+  return useAsyncState('getCollectedConfigs', () => rpc.getCollectedConfigs())
+}
+
+export function useDefaultConfig() {
+  return useAsyncState('getDefaultConfig', () => rpc.getDefaultConfig())
+}
+
+export function useIntermediates() {
+  return useAsyncState('getIntermediates', () => rpc.getIntermediates())
+}
+
 export function useCustomTabs() {
   return useAsyncState('getCustomTabs', () => rpc.getCustomTabs())
 }

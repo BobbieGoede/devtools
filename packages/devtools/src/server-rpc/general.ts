@@ -8,11 +8,15 @@ import { logger } from '@nuxt/kit'
 import destr from 'destr'
 import { snakeCase } from 'scule'
 
-import type { ModuleOptions, NuxtLayout } from '@nuxt/schema'
+import { NuxtConfigSchema } from '@nuxt/schema'
+import type { ModuleOptions, NuxtConfig, NuxtConfigLayer, NuxtLayout } from '@nuxt/schema'
+import { loadConfig } from 'c12'
+import { resolveSchema } from 'untyped'
 import type { AutoImportsWithMetadata, HookInfo, NuxtDevtoolsServerContext, ServerFunctions } from '../types'
 import { setupHooksDebug } from '../runtime/shared/hooks'
 import { getDevAuthToken } from '../dev-auth'
 import { ROUTE_AUTH } from '../constant'
+import { createNuxtConfigInterceptor } from '../utils/resolve-configs'
 
 export function setupGeneralRPC({ nuxt, options, refresh, openInEditorHooks }: NuxtDevtoolsServerContext) {
   const components: Component[] = []
@@ -26,6 +30,10 @@ export function setupGeneralRPC({ nuxt, options, refresh, openInEditorHooks }: N
 
   let unimport: Unimport | undefined
   let app: NuxtApp | undefined
+  let pristineLayers: NuxtConfigLayer
+  let collectedConfigs: NuxtConfigLayer[] = []
+  let defaultConfigSchema: typeof NuxtConfigSchema
+  let intermediateMerges: (NuxtConfigLayer & { definedConfig: NuxtConfig })[] = []
 
   // Nuxt Hooks to collect data
   nuxt.hook('components:extend', (v) => {
@@ -54,8 +62,46 @@ export function setupGeneralRPC({ nuxt, options, refresh, openInEditorHooks }: N
 
     refresh('getServerPages')
   })
-  nuxt.hook('app:resolve', (app) => {
+
+  nuxt.hook('app:resolve', async (app) => {
     serverApp = app
+
+    defaultConfigSchema ??= await resolveSchema(NuxtConfigSchema, {})
+    collectedConfigs = []
+    intermediateMerges = []
+    const layerConfigs = [...nuxt.options._layers]
+    // const resolvedFile = await resolvePath(layerConfigs[0].configFile, { cwd: nuxt.options._layers[0].cwd, extensions: ['.ts', '.js'] })
+    // const defineNuxtConfigInterceptor = createNuxtConfigInterceptor(nuxt, collectedConfigs)
+
+    // @ts-expect-error store in case it has been set
+    const defineNuxtConfig = globalThis.defineNuxtConfig
+    // @ts-expect-error interceptor called during config load
+    globalThis.defineNuxtConfig = createNuxtConfigInterceptor(nuxt, collectedConfigs)
+    // console.log(layerConfigs[0])
+    const loaded = await loadConfig<NuxtConfig>({ ...layerConfigs[0] })
+    // @ts-expect-error not sure how to fix type
+    pristineLayers = loaded
+    // @ts-expect-error restore
+    globalThis.defineNuxtConfig = defineNuxtConfig
+
+    for (const l of collectedConfigs) {
+      // @ts-expect-error interceptor called during config load
+      globalThis.defineNuxtConfig = (c) => {
+        const res = { ...c, preserved: { ...c } }
+        return res
+      }
+      // console.log({ ...l, config: { ...l.config, rootDir: l.folder, srcDir: l.folder } })
+      // globalThis.defineNuxtConfig = createNuxtConfigInterceptor(nuxt, collectedConfigs, l.configFile)
+      // console.log(preservedConfig)
+      // , config: { ...l.config, rootDir: l.folder, srcDir: l.folder }
+
+      const intermediate = await loadConfig<NuxtConfig>({ ...l })
+      intermediateMerges.push({ ...intermediate })
+      // console.log(intermediate)
+    }
+    // console.log(intermediateMerges)
+    // @ts-expect-error restore
+    globalThis.defineNuxtConfig = defineNuxtConfig
   })
   nuxt.hook('imports:sources', async (v) => {
     const result = (await resolveBuiltinPresets(v)).flat()
@@ -76,6 +122,18 @@ export function setupGeneralRPC({ nuxt, options, refresh, openInEditorHooks }: N
   return {
     getServerConfig() {
       return nuxt.options
+    },
+    getNuxtLayers() {
+      return pristineLayers
+    },
+    getCollectedConfigs() {
+      return collectedConfigs
+    },
+    getDefaultConfig() {
+      return defaultConfigSchema
+    },
+    getIntermediates() {
+      return intermediateMerges
     },
     getServerRuntimeConfig(): Record<string, any> {
       // Ported from https://github.com/unjs/nitro/blob/88e79fcdb2a024c96a3d1fd272d0acbff0405013/src/runtime/config.ts#L31
